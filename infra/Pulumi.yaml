@@ -1,0 +1,6 @@
+name: infrastructure
+description: A script for creating AWS infrastructure
+runtime:
+  name: python
+  options:
+    virtualenv: venv
