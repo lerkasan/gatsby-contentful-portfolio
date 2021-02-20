@@ -32,20 +32,15 @@ jobs:
           with:
             node-version: ${{ matrix.node-version }}
 
+        - run: npm ci
+
         - name: Configure a connection to Contentful CMS
-          run: npm ci
-        - run: npm run setup
+          run: npm run setup -- --managementToken=${{ secrets.CONTENTFUL_MANAGEMENT_TOKEN }}
           env:
             CONTENTFUL_SPACE_ID: ${{ secrets.CONTENTFUL_SPACE_ID }}
             CONTENTFUL_ACCESS_TOKEN: ${{ secrets.CONTENTFUL_ACCESS_TOKEN }}
 
         - run: npm run build --if-present
-        - run: npm test
-
-        - name: Build Gatsby content
-          uses: jzweifel/gatsby-cli-github-action@master
-          with:
-            gatsby-arg: build
 
         - name: Archive an artifact
           uses: actions/upload-artifact@v2
