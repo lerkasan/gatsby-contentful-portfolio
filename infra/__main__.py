@@ -26,6 +26,7 @@ def public_access_policy_for_s3website_bucket(bucket_name):
 
 def create_s3website_bucket(bucket_name):
     bucket = s3.Bucket(bucket_name,
+        bucket=bucket_name,
         acl="public-read",
         website=s3.BucketWebsiteArgs(
             index_document="index.html",
@@ -117,9 +118,11 @@ def create_alias_record(alias_domain, distribution):
             )]
         )
 
+logs_bucket = s3.Bucket(LOGS_BUCKET_NAME,
+                    bucket=LOGS_BUCKET_NAME,
+                    acl="private")
 
 wwwroot_bucket = create_s3website_bucket(WWWROOT_BUCKET_NAME)
-logs_bucket = s3.Bucket(LOGS_BUCKET_NAME, acl="private")
 ssl_certificate = acm.get_certificate(domain=WEBSITE_DOMAIN_NAME, statuses=["ISSUED"])
 s3_distribution = create_cloudfront_distribution_for_s3website(wwwroot_bucket, logs_bucket, ssl_certificate)
 create_alias_record(WEBSITE_DOMAIN_NAME, s3_distribution)
