@@ -1,6 +1,7 @@
 name: CI
 
 env:
+  WEBSITE_ENDPOINT: "https://lerkasan.de"
   S3_BUCKET_NAME: "lerkasan.de-wwwroot"
   AWS_REGION:     "us-east-1"
 
@@ -98,3 +99,12 @@ jobs:
           run: |
             aws s3 rm s3://${{ env.S3_BUCKET_NAME }}
             aws s3 sync . s3://${{ env.S3_BUCKET_NAME }}/
+
+        - name: Health check
+          run: |
+            if [ `curl -Is ${{ env.WEBSITE_ENDPOINT }} | head -n 1 | awk '{ print $2 }'` = "200" ]; then
+              echo "SUCCESS. The website is available at ${{ env.WEBSITE_ENDPOINT }} "
+            else
+              echo "FAILURE"
+              exit 1
+            fi

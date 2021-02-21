@@ -84,7 +84,10 @@ def create_cloudfront_distribution_for_s3website(wwwroot_bucket, logs_bucket, ss
             ),
             viewer_protocol_policy="redirect-to-https",
             min_ttl=0,
-            default_ttl=3600,
+# Default TTL value of cache was intentionally decreased from 1 hour (default_ttl=3600) to 2 minutes
+# to make it easier to notice that after the CI workflow is run all content changes from Contentful CMS website
+# will be actually deployed to the S3+Cloudfront website
+            default_ttl=120,
             max_ttl=86400,
         ),
 
