@@ -1,11 +1,13 @@
 from pulumi import export, Output
 from pulumi_aws import s3, cloudfront, route53, acm
+from time import time
 import json
+import boto3
 
 WEBSITE_DOMAIN_NAME = "lerkasan.de"
 WWWROOT_BUCKET_NAME = WEBSITE_DOMAIN_NAME + "-wwwroot"
 LOGS_BUCKET_NAME = WEBSITE_DOMAIN_NAME + "-logs"
-CLOUDFRONT_DISTRIBUTION_NAME =WEBSITE_DOMAIN_NAME + "-CDN"
+CLOUDFRONT_DISTRIBUTION_NAME = WEBSITE_DOMAIN_NAME + "-CDN"
 
 
 def public_access_policy_for_s3website_bucket(bucket_name):
@@ -84,10 +86,12 @@ def create_cloudfront_distribution_for_s3website(wwwroot_bucket, logs_bucket, ss
             ),
             viewer_protocol_policy="redirect-to-https",
             min_ttl=0,
-# Default TTL value of cache was intentionally decreased from 1 hour (default_ttl=3600) to 2 minutes
+# Default TTL value of cache may be intentionally decreased from 1 hour (default_ttl=3600) to 2 minutes
 # to make it easier to notice that after the CI workflow is run all content changes from Contentful CMS website
 # will be actually deployed to the S3+Cloudfront website
-            default_ttl=120,
+# Although, decreasing default_ttl is not necessary anymore due to a creation of cache invalidations for a cloudfront distribution
+# However, invalidations will inflict additional costs after 1000 paths
+            default_ttl=3600,
             max_ttl=86400,
         ),
 
@@ -121,6 +125,25 @@ def create_alias_record(alias_domain, distribution):
             )]
         )
 
+def invalidate_distribution_cache(distribution_id):
+# According to https://github.com/pulumi/pulumi-aws/issues/916#issuecomment-606288737 Pulumi does not provide a way
+# to create a new invalidation for a cloudfront distribution. Thus, AWS SDK code to create an invalidation is used
+    client = boto3.client('cloudfront')
+    response = client.create_invalidation(
+        DistributionId=distribution_id,
+        InvalidationBatch={
+            'Paths': {
+            'Quantity': 1,
+            'Items': [
+                '/*'
+            ],
+            },
+            'CallerReference': str(time()).replace(".", "")
+        }
+    )
+    return response
+
+
 logs_bucket = s3.Bucket(LOGS_BUCKET_NAME,
                     bucket=LOGS_BUCKET_NAME,
                     acl="private")
@@ -130,6 +153,9 @@ ssl_certificate = acm.get_certificate(domain=WEBSITE_DOMAIN_NAME, statuses=["ISS
 s3_distribution = create_cloudfront_distribution_for_s3website(wwwroot_bucket, logs_bucket, ssl_certificate)
 create_alias_record(WEBSITE_DOMAIN_NAME, s3_distribution)
 
+# Added a cache invalidation instead of decreasing default_ttl of a distribution cache.
+# However, invalidations will inflict additional costs after 1000 paths
+s3_distribution.id.apply(invalidate_distribution_cache)
 
 export("s3_bucket_url", Output.concat("s3://", wwwroot_bucket.bucket))
 export("s3_bucket_website_endpoint", wwwroot_bucket.website_endpoint)
