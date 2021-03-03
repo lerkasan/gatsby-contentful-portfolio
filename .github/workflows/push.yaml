@@ -1,0 +1,110 @@
+name: CI
+
+env:
+  WEBSITE_ENDPOINT: "https://lerkasan.de"
+  S3_BUCKET_NAME: "lerkasan.de-wwwroot"
+  AWS_REGION:     "us-east-1"
+
+on:
+  push:
+      branches: [ master ]
+      paths-ignore:
+        - 'infra/**'
+        - '.github/**'
+# for debugging purposes only
+  workflow_dispatch:
+
+jobs:
+
+  build:
+      name: Build via Gatsby
+      runs-on: ubuntu-latest
+
+      strategy:
+        matrix:
+          node-version: [12.x, 14.x]
+
+      steps:
+        - name: Checkout repository
+          uses: actions/checkout@v2
+
+        - name: Use Node.js ${{ matrix.node-version }}
+          uses: actions/setup-node@v2
+          with:
+            node-version: ${{ matrix.node-version }}
+
+        - run: npm ci
+
+# Warning: This step overrides an existing content in Contentful CMS with a default content
+# Uncomment this step only if a website is being deployed for the first time
+#        - name: Configure a connection to Contentful CMS
+#          run: npm run setup -- --managementToken=${{ secrets.CONTENTFUL_MANAGEMENT_TOKEN }}
+#          env:
+#            CONTENTFUL_SPACE_ID: ${{ secrets.CONTENTFUL_SPACE_ID }}
+#            CONTENTFUL_ACCESS_TOKEN: ${{ secrets.CONTENTFUL_ACCESS_TOKEN }}
+
+        - name: Create a config file .env with Contentful space_id and access_token
+          run: |
+            echo "CONTENTFUL_SPACE_ID=${{ secrets.CONTENTFUL_SPACE_ID }}" > .env
+            echo "CONTENTFUL_ACCESS_TOKEN=${{ secrets.CONTENTFUL_ACCESS_TOKEN }}" >> .env
+            echo "MAILCHIMP_ENDPOINT=${{ secrets.MAILCHIMP_ENDPOINT }}" >> .env
+
+        - run: npm run build --if-present
+
+        - name: Archive an artifact
+          uses: actions/upload-artifact@v2
+          with:
+            name: public-folder
+            path: public
+
+  infra:
+      needs: build
+      name: AWS S3 + Cloudfront infrastructure provisioning
+      runs-on: ubuntu-latest
+
+      steps:
+        - name: Checkout repository
+          uses: actions/checkout@v2
+
+        - name: Provision infra via Pulumi
+          uses: pulumi/actions@v1
+          with:
+            command: up
+          env:
+            AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+            AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+            PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
+            AWS_REGION: ${{ env.AWS_REGION }}
+            PULUMI_ROOT: infra
+
+  deploy:
+      needs: [build, infra]
+      name: Deployment to AWS
+      runs-on: ubuntu-latest
+
+      steps:
+        - name: Download an artifact
+          uses: actions/download-artifact@v2
+          with:
+            name: public-folder
+
+        - name: Configure AWS credentials
+          uses: aws-actions/configure-aws-credentials@v1
+          with:
+            aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+            aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+            aws-region: ${{ env.AWS_REGION }}
+
+        - name: Upload static website content to an AWS S3 bucket
+          run: |
+            aws s3 rm s3://${{ env.S3_BUCKET_NAME }} --recursive
+            aws s3 sync . s3://${{ env.S3_BUCKET_NAME }}/
+
+        - name: Health check
+          run: |
+            if [ `curl -Is ${{ env.WEBSITE_ENDPOINT }} | head -n 1 | awk '{ print $2 }'` = "200" ]; then
+              echo "SUCCESS. The website is available at ${{ env.WEBSITE_ENDPOINT }} "
+            else
+              echo "FAILURE"
+              exit 1
+            fi

@@ -54,6 +54,10 @@ typings/
 # dotenv environment variable files
 .env
 
+# Python environment
+venv/
+*.pyc
+
 # gatsby files
 .cache/
 public
@@ -67,3 +71,6 @@ yarn-error.log
 .pnp.js
 # Yarn Integrity file
 .yarn-integrity
+
+# IDE
+.idea/
