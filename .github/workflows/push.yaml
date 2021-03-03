@@ -97,7 +97,7 @@ jobs:
 
         - name: Upload static website content to an AWS S3 bucket
           run: |
-            aws s3 rm s3://${{ env.S3_BUCKET_NAME }}
+            aws s3 rm s3://${{ env.S3_BUCKET_NAME }} --recursive
             aws s3 sync . s3://${{ env.S3_BUCKET_NAME }}/
 
         - name: Health check
